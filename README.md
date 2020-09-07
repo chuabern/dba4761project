@@ -1,0 +1,10 @@
+# dba4761project
+project group for DBA4761
+
+1. Revise the “calculations” worksheet on the spreadsheet “validation.xlsx”
+2. Check how I re-organized for you the formulations on the “formulation” worksheet. So you can understand the formulations in detail.
+3. You need to code the function "rd.leases.adjustments.f" on the file “libs/rd_leases.R”
+4. The results in the “output” worksheet can be generated using the routines on “main.R”
+5. Then you need to validate the results on the “validation” worksheet to make sure your code is perfect.
+
+Deadline: September 30th, 2020 @ 11:59:59 PM
