@@ -6,6 +6,8 @@ path_libs=file.path(path_root, "libs")
 path_output=file.path(path_root, "output")
 #---------------------------------------------------------------------
 source(file.path(path_libs, "rd_leases.R")) # replace blank for zeros not NAs
+#this reads the rd_leases.R file from "./libs"
+
 load(file.path(path_data, "biotech.rda"))
 #---------------------------------------------------------------------
 report_name=paste0(
