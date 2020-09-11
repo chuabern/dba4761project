@@ -5,6 +5,7 @@ library(purrr)
 rd.leases.adjustments.f <- function(financial_data, cost_debt=0.04){
   
   columns = c(
+    "company_name",
     "exchange_ticker",
     "EBITDA_margin",
     "operating_margin", 
