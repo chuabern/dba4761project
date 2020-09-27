@@ -3,292 +3,141 @@ library(tidyr)
 library(purrr)
 #-------------------------------------------------------------------------------------------------
 rd.leases.adjustments.f <- function(financial_data, cost_debt=0.04){
+  ### Average R&D
+  rnd_avg=data.frame(row.names=1:nrow(data))
+  for (i in 1:5){
+    df <- data.frame(data[,paste0('r_d_expense_ltm_',i,'_us_dmm_historical_rate')])
+    rnd_avg <- cbind(rnd_avg,df)}
+  rnd_avg <- rnd_avg %>% mutate(RnD_average=rowMeans(rnd_avg)) %>% select(RnD_average)
+  rnd_avg <- as.vector(rnd_avg[[1]])
   
-  columns = c(
-    "company_name",
-    "exchange_ticker",
-    "EBITDA_margin",
-    "operating_margin", 
-    "effective_tax_rate",
-    "roic",
-    "rnd_adjusted_roe",
-    "growth_in_revenue_last10yrs",
-    "growth_in_ebitda_last10yrs",
-    "debt_ratio_book",
-    "debt_ratio_market",
-    "enterprise_value",
-    "invested_capital_incl_capitlized_rnd",
-    "adjusted_net_income",
-    "adjusted_ebit",
-    "total_debt_incl_leases",
-    "pe",
-    "non_cash_pe",
-    "rnd_adjusted_pe",
-    "ev_sales",
-    "ev_ebit",
-    "ev_invested_capital",
-    "ev_ebitda",
-    "capitalized_rnd",
-    "ev_ebitda_rnd",
-    "turnover_ratio",
-    "only_taxable_income",
-    "missing_taxable_income",
-    "only_positive_taxes",
-    "only_positive_net_income",
-    "only_positive_market_cap",
-    "capitalized_leases"
-  )
+  ### Function for capitalized_rd 
+  capitalized_rd <- function(n){
+    x <- data.frame(y=n$r_d_expense_ltm_us_dmm_historical_rate) 
+    for (i in 1:4){
+      df <- data.frame(y=n[,paste0('r_d_expense_ltm_',i,'_us_dmm_historical_rate')])
+      x <- cbind(x,df)}
+    x <- data.frame(t(t(x)*seq(1,0.2,length=5)))
+    x <- x %>% mutate(capital_rd=rowSums(x)) %>% select(capital_rd)
+    x <- as.vector(x[[1]])}
   
-  output <- data.frame(matrix(nrow=1, ncol=length(columns)))
-  colnames(output) <- columns
-  output <- as.data.frame(output)
+  ### Function for capitalized_leases
+  capital <- function(financial_data){
+    x=data.frame(row.names=1:nrow(financial_data))
+    for (i in 1:5){
+      df <- data.frame(y=(financial_data[,paste0('operating_lease_commitment_due_',i,'_latest_annual_us_dmm_historical_rate')]/
+                            ((1+cost_debt)^i)))
+      x=cbind(x,df)}
+    x[,6] <-((financial_data$operating_lease_commitment_due_after_5_yrs_latest_annual_us_dmm_historical_rate/5)*(1-1.04^-5)/
+               cost_debt)/((1+cost_debt)^5)
+    x <- x %>% mutate(capitalized_leases=rowSums(x)) %>% select(capitalized_leases)
+    x <- as.vector(x[[1]])}
   
-  for (i in 1:nrow(financial_data)){
-    company_name <- financial_data$company_name[i]
-    
-    exchange_ticker <- financial_data$exchange_ticker[i]
-    
-    EBITDA_margin <- if (financial_data$total_revenue_ltm_us_dmm_historical_rate[i] > 0){
-      financial_data$ebitda_ltm_us_dmm_historical_rate[i] / 
-        financial_data$total_revenue_ltm_us_dmm_historical_rate[i]
-    } else {
-      NA
-    }
-    
-    adjusted_ebit <- financial_data$ebit_ltm_us_dmm_historical_rate[i] +
-      financial_data$r_d_expense_ltm_us_dmm_historical_rate[i] - 
-      (
-        financial_data$r_d_expense_ltm_1_us_dmm_historical_rate[i] + 
-          financial_data$r_d_expense_ltm_2_us_dmm_historical_rate[i] +
-          financial_data$r_d_expense_ltm_3_us_dmm_historical_rate[i] +
-          financial_data$r_d_expense_ltm_4_us_dmm_historical_rate[i] +
-          financial_data$r_d_expense_ltm_5_us_dmm_historical_rate[i]
-      ) / 5
-    
-    operating_margin <- if(financial_data$total_revenue_ltm_us_dmm_historical_rate[i] > 0){
-      adjusted_ebit / 
-        financial_data$total_revenue_ltm_us_dmm_historical_rate[i]
-    } else {
-      NA
-    }
-    
-    effective_tax_rate <-financial_data$effective_tax_rate_ltm_percent[i] / 100
-    
-    capitalized_rnd <- financial_data$r_d_expense_ltm_us_dmm_historical_rate[i] +
-      financial_data$r_d_expense_ltm_1_us_dmm_historical_rate[i] * 0.8 + 
-      financial_data$r_d_expense_ltm_2_us_dmm_historical_rate[i] * 0.6 +
-      financial_data$r_d_expense_ltm_3_us_dmm_historical_rate[i] * 0.4 +
-      financial_data$r_d_expense_ltm_4_us_dmm_historical_rate[i] * 0.2 
-    
-    invested_capital_incl_capitlized_rnd <- financial_data$total_debt_latest_quarter_us_dmm_historical_rate[i] + 
-      financial_data$total_equity_latest_quarter_us_dmm_historical_rate[i] - 
-      financial_data$cash_and_equivalents_latest_quarter_us_dmm_historical_rate[i] +
-      capitalized_rnd
-    
-    roic <- if(invested_capital_incl_capitlized_rnd > 0){ 
-      adjusted_ebit * (1 - effective_tax_rate) / invested_capital_incl_capitlized_rnd
-    } else {
-      NA
-    }
-    
-    adjusted_net_income <- financial_data$net_income_ltm_us_dmm_historical_rate[i] +
-      financial_data$r_d_expense_ltm_us_dmm_historical_rate[i] - 
-      (
-        financial_data$r_d_expense_ltm_1_us_dmm_historical_rate[i] + 
-          financial_data$r_d_expense_ltm_2_us_dmm_historical_rate[i] +
-          financial_data$r_d_expense_ltm_3_us_dmm_historical_rate[i] +
-          financial_data$r_d_expense_ltm_4_us_dmm_historical_rate[i] +
-          financial_data$r_d_expense_ltm_5_us_dmm_historical_rate[i]
-      ) / 5
-    
-    
-    rnd_adjusted_roe <- if(financial_data$total_equity_latest_quarter_us_dmm_historical_rate[i] > 0){
-      adjusted_net_income / financial_data$total_equity_latest_quarter_us_dmm_historical_rate[i]
-    } else {
-      NA
-    }
+  #Create the required table
+  processed <- financial_data %>%
+    mutate(across(everything(), ~replace_na(.x, 0))) %>%
+    mutate(
       
-    growth_in_revenue_last10yrs <- if(financial_data$total_revenues_10_yr_cagr_percent_ltm_percent[i] == 0){
-      NA
-    } else {
-      financial_data$total_revenues_10_yr_cagr_percent_ltm_percent[i] / 100
-    }
+      ebitda_margin = ifelse(total_revenue_ltm_us_dmm_historical_rate > 0, 
+                             ebitda_ltm_us_dmm_historical_rate /total_revenue_ltm_us_dmm_historical_rate,NA),
       
-    growth_in_ebitda_last10yrs <- if(financial_data$ebitda_10_yr_cagr_percent_ltm_percent[i] == 0){
-      NA
-    } else {
-      financial_data$ebitda_10_yr_cagr_percent_ltm_percent[i] / 100
-    }
-    
-    capitalized_leases <- financial_data$operating_lease_commitment_due_1_latest_annual_us_dmm_historical_rate[i]/(1+cost_debt) +
-      financial_data$operating_lease_commitment_due_2_latest_annual_us_dmm_historical_rate[i]/(1+cost_debt)**2 +
-      financial_data$operating_lease_commitment_due_3_latest_annual_us_dmm_historical_rate[i]/(1+cost_debt)**3 +
-      financial_data$operating_lease_commitment_due_4_latest_annual_us_dmm_historical_rate[i]/(1+cost_debt)**4 +
-      financial_data$operating_lease_commitment_due_5_latest_annual_us_dmm_historical_rate[i]/(1+cost_debt)**5 +
-      ((financial_data$operating_lease_commitment_due_after_5_yrs_latest_annual_us_dmm_historical_rate[i]/5)*(1-(1+cost_debt)**-5)/cost_debt)/(1+cost_debt)**5
-  
-  
-    debt_ratio_book <- if(financial_data$total_equity_latest_quarter_us_dmm_historical_rate[i] > 0){
-      (capitalized_leases + financial_data$total_debt_latest_quarter_us_dmm_historical_rate[i]) / 
-        (financial_data$total_equity_latest_quarter_us_dmm_historical_rate[i] + 
-           capitalized_leases +
-           financial_data$total_debt_latest_quarter_us_dmm_historical_rate[i])
-    } else {
-      NA
-    }
-    
-    debt_ratio_market <- if(financial_data$market_capitalization_latest_us_dmm_historical_rate[i] > 0){
-      (capitalized_leases + financial_data$total_debt_latest_quarter_us_dmm_historical_rate[i])/
-        (financial_data$market_capitalization_latest_us_dmm_historical_rate[i] + 
-           capitalized_leases +
-           financial_data$total_debt_latest_quarter_us_dmm_historical_rate[i])
-    }
-    
-    enterprise_value <- financial_data$market_capitalization_latest_us_dmm_historical_rate[i] +
-      financial_data$total_debt_latest_quarter_us_dmm_historical_rate[i] + 
-      capitalized_leases -
-      financial_data$cash_and_equivalents_latest_quarter_us_dmm_historical_rate[i]
-    
-    total_debt_incl_leases <- financial_data$total_debt_latest_quarter_us_dmm_historical_rate[i] +
-      capitalized_leases
-    
-    pe <- if(financial_data$net_income_ltm_us_dmm_historical_rate[i] > 0){
-      financial_data$market_capitalization_latest_us_dmm_historical_rate[i] /
-        financial_data$net_income_ltm_us_dmm_historical_rate[i]
-    } else {
-      NA
-    }
-    
-    non_cash_pe <- if(financial_data$net_income_ltm_us_dmm_historical_rate[i] > 0){
-      (financial_data$market_capitalization_latest_us_dmm_historical_rate[i] - 
-         financial_data$cash_and_equivalents_latest_quarter_us_dmm_historical_rate[i]) /
-        (financial_data$net_income_ltm_us_dmm_historical_rate[i] - 
-           financial_data$interest_and_invest_income_ltm_us_dmm_historical_rate[i])
-    } else {
-      NA
-    }
-    
-    rnd_adjusted_pe <- if(adjusted_net_income > 0){
-      financial_data$market_capitalization_latest_us_dmm_historical_rate[i] /
-        adjusted_net_income
-    } else {
-      NA
-    }
-    
-    ev_sales <- if(financial_data$total_revenue_ltm_us_dmm_historical_rate[i] == 0){
-      NA
-    } else {
-      enterprise_value / financial_data$total_revenue_ltm_us_dmm_historical_rate[i]
-    }
-    
-    ev_ebit <- if(adjusted_ebit > 0){
-      enterprise_value / adjusted_ebit
-    } else {
-      NA
-    }
-    
-    ev_invested_capital <- if(invested_capital_incl_capitlized_rnd > 0){
-      enterprise_value / invested_capital_incl_capitlized_rnd
-    } else {
-      NA
-    }
-    
-    ev_ebitda <- if(financial_data$ebitda_ltm_us_dmm_historical_rate[i] > 0){
-      enterprise_value / financial_data$ebitda_ltm_us_dmm_historical_rate[i]
-    } else {
-      NA
-    }
+      adjusted_ebit = ebit_ltm_us_dmm_historical_rate + r_d_expense_ltm_us_dmm_historical_rate - rnd_avg,
       
-    ev_ebitda_rnd <- if(financial_data$ebitda_ltm_us_dmm_historical_rate[i] > 0){
-      enterprise_value / (financial_data$ebitda_ltm_us_dmm_historical_rate[i] + 
-                            financial_data$r_d_expense_ltm_us_dmm_historical_rate[i])
-    } else {
-      NA
-    }
-    
-    turnover_ratio <- if(financial_data$daily_value_traded_latest_us_dmm_historical_rate[i] > 0){
-      if(financial_data$market_capitalization_latest_us_dmm_historical_rate[i] > 0){
-        if(financial_data$daily_value_traded_latest_us_dmm_historical_rate[i] * 250/
-           financial_data$market_capitalization_latest_us_dmm_historical_rate[i] > 10){
-          NA
-        } else {
-          financial_data$daily_value_traded_latest_us_dmm_historical_rate[i] * 250/
-            financial_data$market_capitalization_latest_us_dmm_historical_rate[i]
-        }
-      } else {
-        NA
-      }
-    } else {
-      NA
-    }
-    
-    only_taxable_income <- if(financial_data$ebt_incl_unusual_items_ltm_us_dmm_historical_rate[i] > 0){
-      financial_data$ebt_incl_unusual_items_ltm_us_dmm_historical_rate[i]
-    } else {
-      NA
-    }
-    
-    missing_taxable_income <- if(financial_data$ebt_incl_unusual_items_ltm_us_dmm_historical_rate[i] == 0){
-      0
-    } else {
-      1
-    }
-    
-    only_positive_taxes <- if(financial_data$ebt_incl_unusual_items_ltm_us_dmm_historical_rate[i] > 0){
-      financial_data$income_tax_expense_ltm_us_dmm_historical_rate[i]
-    } else {
-      NA
-    }
-    
-    only_positive_net_income <- if(financial_data$net_income_ltm_us_dmm_historical_rate[i] > 0){
-      financial_data$net_income_ltm_us_dmm_historical_rate[i]
-    } else {
-      NA
-    }
-    
-    only_positive_market_cap <- if(financial_data$net_income_ltm_us_dmm_historical_rate[i] > 0){
-      financial_data$market_capitalization_latest_us_dmm_historical_rate[i]
-    } else {
-      NA
-    }
-    
-    output1 <- list(
-      company_name,
-      exchange_ticker,
-      EBITDA_margin,
-      operating_margin, 
-      effective_tax_rate,
-      roic,
-      rnd_adjusted_roe,
-      growth_in_revenue_last10yrs,
-      growth_in_ebitda_last10yrs,
-      debt_ratio_book,
-      debt_ratio_market,
-      enterprise_value,
-      invested_capital_incl_capitlized_rnd,
-      adjusted_net_income,
-      adjusted_ebit,
-      total_debt_incl_leases,
-      pe,
-      non_cash_pe,
-      rnd_adjusted_pe,
-      ev_sales,
-      ev_ebit,
-      ev_invested_capital,
-      ev_ebitda,
-      capitalized_rnd,
-      ev_ebitda_rnd,
-      turnover_ratio,
-      only_taxable_income,
-      missing_taxable_income,
-      only_positive_taxes,
-      only_positive_net_income,
-      only_positive_market_cap,
-      capitalized_leases
-    )
-    output <- output %>% rbind(output1) %>% as.data.frame(col.names = columns)
-    }
-    return(output[-1,])
-}
+      operating_margin = ifelse(total_revenue_ltm_us_dmm_historical_rate > 0,
+                                adjusted_ebit / total_revenue_ltm_us_dmm_historical_rate,NA),
+      
+      effective_tax_rate = effective_tax_rate_ltm_percent / 100,
+      
+      capitalized_rd = capitalized_rd(financial_data),
+      
+      adjusted_invested_capital = total_debt_latest_quarter_us_dmm_historical_rate +
+        total_equity_latest_quarter_us_dmm_historical_rate -
+        cash_and_equivalents_latest_quarter_us_dmm_historical_rate +
+        capitalized_rd,
+      
+      roic = ifelse(adjusted_invested_capital > 0,
+                    adjusted_ebit * (1 - effective_tax_rate) / adjusted_invested_capital,NA),
+      
+      adjusted_net_income = net_income_ltm_us_dmm_historical_rate + r_d_expense_ltm_us_dmm_historical_rate - rnd_avg,
+      
+      adjusted_roe = ifelse(total_equity_latest_quarter_us_dmm_historical_rate > 0,
+                            adjusted_net_income / total_equity_latest_quarter_us_dmm_historical_rate,NA),
+      
+      revenue_growth = ifelse(total_revenues_10_yr_cagr_percent_ltm_percent == 0,NA,
+                              total_revenues_10_yr_cagr_percent_ltm_percent / 100),
+      
+      ebitda_growth = ifelse(ebitda_10_yr_cagr_percent_ltm_percent == 0,NA,
+                             ebitda_10_yr_cagr_percent_ltm_percent / 100),
+      
+      capitalized_leases = capital(financial_data),
+      
+      book_value_debt = ifelse(total_equity_latest_quarter_us_dmm_historical_rate > 0,
+                               (capitalized_leases + total_debt_latest_quarter_us_dmm_historical_rate) /
+                                 (total_equity_latest_quarter_us_dmm_historical_rate + capitalized_leases + total_debt_latest_quarter_us_dmm_historical_rate),NA),
+      
+      market_value_debt = ifelse(market_capitalization_latest_us_dmm_historical_rate > 0,
+                                 (capitalized_leases + total_debt_latest_quarter_us_dmm_historical_rate) /
+                                   (market_capitalization_latest_us_dmm_historical_rate + capitalized_leases + total_debt_latest_quarter_us_dmm_historical_rate),NA),
+      
+      enterprise_value = market_capitalization_latest_us_dmm_historical_rate +
+        total_debt_latest_quarter_us_dmm_historical_rate +
+        capitalized_leases - cash_and_equivalents_latest_quarter_us_dmm_historical_rate,
+      
+      adjusted_total_debt = total_debt_latest_quarter_us_dmm_historical_rate + capitalized_leases,
+      
+      pe = ifelse(net_income_ltm_us_dmm_historical_rate > 0,
+                  market_capitalization_latest_us_dmm_historical_rate / net_income_ltm_us_dmm_historical_rate,NA),
+      
+      non_cash_pe = ifelse(net_income_ltm_us_dmm_historical_rate > 0,
+                           (market_capitalization_latest_us_dmm_historical_rate - cash_and_equivalents_latest_quarter_us_dmm_historical_rate) /(net_income_ltm_us_dmm_historical_rate - interest_and_invest_income_ltm_us_dmm_historical_rate),NA),
+      
+      adjusted_pe = ifelse(adjusted_net_income > 0 ,
+                           market_capitalization_latest_us_dmm_historical_rate / adjusted_net_income,NA),
+      
+      ev_sales = ifelse(total_revenue_ltm_us_dmm_historical_rate == 0,NA,
+                        enterprise_value/ total_revenue_ltm_us_dmm_historical_rate),
+      
+      ev_ebit = ifelse(adjusted_ebit > 0,enterprise_value/adjusted_ebit,NA),
+      
+      ev_invested_capital = ifelse(adjusted_invested_capital > 0,enterprise_value/adjusted_invested_capital,NA),
+      
+      ev_ebitda = ifelse(ebitda_ltm_us_dmm_historical_rate > 0,enterprise_value/ebitda_ltm_us_dmm_historical_rate,NA),
+      
+      ev_adjusted_ebitda = ifelse(ebitda_ltm_us_dmm_historical_rate > 0,
+                                  enterprise_value/(ebitda_ltm_us_dmm_historical_rate +r_d_expense_ltm_us_dmm_historical_rate),
+                                  NA),
+      
+      turnover_ratio = ifelse(daily_value_traded_latest_us_dmm_historical_rate > 0,
+                              ifelse(market_capitalization_latest_us_dmm_historical_rate > 0 ,
+                                     ifelse(daily_value_traded_latest_us_dmm_historical_rate * 250 /
+                                              market_capitalization_latest_us_dmm_historical_rate > 10,NA,
+                                            daily_value_traded_latest_us_dmm_historical_rate * 250 /
+                                              market_capitalization_latest_us_dmm_historical_rate),NA),NA),
+      
+      only_taxable_income = ifelse(ebt_incl_unusual_items_ltm_us_dmm_historical_rate > 0,
+                                   ebt_incl_unusual_items_ltm_us_dmm_historical_rate,NA),
+      
+      missing_taxable_income = ifelse(ebt_incl_unusual_items_ltm_us_dmm_historical_rate == 0,0, 1),
+      
+      only_taxes = ifelse(ebt_incl_unusual_items_ltm_us_dmm_historical_rate > 0,
+                          income_tax_expense_ltm_us_dmm_historical_rate,NA),
+      
+      only_net_income = ifelse(net_income_ltm_us_dmm_historical_rate > 0,
+                               net_income_ltm_us_dmm_historical_rate,NA),
+      
+      only_market_cap = ifelse(net_income_ltm_us_dmm_historical_rate > 0,
+                               market_capitalization_latest_us_dmm_historical_rate,NA)
+    ) %>%
+    select("company_name", "exchange_ticker", "ebitda_margin", "operating_margin", "effective_tax_rate",
+           "roic", "adjusted_roe", "revenue_growth", "ebitda_growth", "book_value_debt", "market_value_debt",
+           "enterprise_value", "adjusted_invested_capital", "adjusted_net_income", "adjusted_ebit",
+           "adjusted_total_debt", "pe", "non_cash_pe", "adjusted_pe", "ev_sales", "ev_ebit",
+           "ev_invested_capital", "ev_ebitda", "capitalized_rd", "ev_adjusted_ebitda", "turnover_ratio",
+           "only_taxable_income", "missing_taxable_income", "only_taxes", "only_net_income", "only_market_cap",
+           "capitalized_leases"  )
+  
+  return(processed)
+
+  }
 #-------------------------------------------------------------------------------------------------
 # rm(rd.leases.adjustments.f)
