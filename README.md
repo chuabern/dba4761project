@@ -1,3 +1,5 @@
+Note: This is Nico's first group project.
+
 # dba4761project
 project group for DBA4761
 
